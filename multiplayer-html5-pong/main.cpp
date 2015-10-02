@@ -56,21 +56,51 @@ private:
     socket_.async_read_some(boost::asio::buffer(buffer_),
       [this](boost::system::error_code ec, std::size_t bytes_transferred) {
         if (!ec) {
-          std::cout << socket_.native_handle() << " read " << bytes_transferred << "\n";
+          //std::cout << socket_.native_handle() << " read " << bytes_transferred << "\n";
           header_.append(buffer_.data(), buffer_.data() + bytes_transferred);
           if (parse_header()) {
+            send_http("HTTP/1.0 200 OK\r\n", "<html><body>hello world</body></html>");
+            do_write();
+          } else {
+            do_read();
           }
-          do_read();
-        }
-        else if (ec != boost::asio::error::operation_aborted)
-        {
-          std::cout << socket_.native_handle() << " closed\n";
+        } else if (ec != boost::asio::error::operation_aborted) {
+          //std::cout << socket_.native_handle() << " closed\n";
           is_stopped = true;
         } else {
           do_read();
         }
       }
     );
+  }
+
+  void do_write() {
+    boost::asio::async_write(
+      socket_,
+      buffers_,
+      [this](boost::system::error_code ec, std::size_t bytes_transferred) {
+        if (!ec) {
+          std::cout << "written " << bytes_transferred << "\n";
+        } else if (ec != boost::asio::error::operation_aborted) {
+          is_stopped = true;
+        } else {
+          do_write();
+        }
+      }
+    );
+  }
+
+  void send_http(const char *code, const std::string &str) {
+    response_.clear();
+    response_.append(code);
+    response_.append("Content-Length: ");
+    response_.append(std::to_string(str.size()));
+    response_.append("\r\n");
+    response_.append("Content-Type: text/html\r\n");
+    response_.append("\r\n");
+    response_.append(str);
+    buffers_.clear();
+    buffers_.emplace_back(boost::asio::buffer(response_));
   }
 
   bool is(std::string::iterator b, std::string::iterator e, const char *str) {
@@ -86,11 +116,13 @@ private:
   /// The io_service used to perform asynchronous operations.
   boost::asio::io_service &io_;
 
-  std::array<char, 32> buffer_;
+  std::array<char, 2048> buffer_;
 
   socket socket_;
   std::string header_;
   std::string url_;
+  std::string response_;
+  std::vector<boost::asio::const_buffer> buffers_;
 
   bool is_stopped;
 };
