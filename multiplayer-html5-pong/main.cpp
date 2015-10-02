@@ -5,6 +5,7 @@
 
 #include <boost/asio.hpp>
 #include <iostream>
+#include <fstream>
 
 namespace game_server {
 
@@ -16,11 +17,14 @@ class connection {
 public:
   connection(io_service &io, socket &sock) :
     io_(io),
-    socket_(std::move(sock)),
-    is_stopped(false)
+    socket_(std::move(sock))
   {
     std::cout << "accepted " << socket_.native_handle() << "\n";
     do_read();
+  }
+
+  bool is_open() {
+    return socket_.is_open();
   }
 private:
   bool parse_header() {
@@ -53,39 +57,58 @@ private:
   }
 
   void do_read() {
+    std::cout << "do_read " << socket_.native_handle() << "\n";
     socket_.async_read_some(boost::asio::buffer(buffer_),
       [this](boost::system::error_code ec, std::size_t bytes_transferred) {
+        std::cout << "read " << socket_.native_handle() << " err=" << ec << "\n";
         if (!ec) {
           //std::cout << socket_.native_handle() << " read " << bytes_transferred << "\n";
           header_.append(buffer_.data(), buffer_.data() + bytes_transferred);
           if (parse_header()) {
-            send_http("HTTP/1.0 200 OK\r\n", "<html><body>hello world</body></html>");
+            bool error = true;
+            if (url_.find_first_of("..", 2) == url_.npos) {
+              if (!url_.empty() && url_.back() == '/') {
+                url_.append("index.html");
+              }
+              std::ifstream is("htdocs" + url_);
+              if (!is.fail()) {
+                std::string file;
+                while (!is.eof()) {
+                  size_t size = file.size();
+                  is.read(buffer_.data(), buffer_.size());
+                  size_t extra = (size_t)is.gcount();
+                  file.append(buffer_.begin(), buffer_.begin() + extra);
+                }
+                send_http("HTTP/1.0 200 OK\r\n", file);
+                error = false;
+              }
+            }
+            if (error) {
+              send_http("HTTP/1.0 404 Not Found\r\n", "<html><body>Not found</body></html>");
+            }
             do_write();
-          } else {
-            do_read();
           }
         } else if (ec != boost::asio::error::operation_aborted) {
-          //std::cout << socket_.native_handle() << " closed\n";
-          is_stopped = true;
-        } else {
-          do_read();
+          std::cout << "close " << socket_.native_handle() << "\n";
+          socket_.close();
         }
       }
     );
   }
 
   void do_write() {
+    std::cout << "do_write " << socket_.native_handle() << " sz=" << buffers_.size() << "\n";
     boost::asio::async_write(
       socket_,
       buffers_,
       [this](boost::system::error_code ec, std::size_t bytes_transferred) {
+        std::cout << "write " << socket_.native_handle() << " err=" << ec << "\n";
         if (!ec) {
-          std::cout << "written " << bytes_transferred << "\n";
-        } else if (ec != boost::asio::error::operation_aborted) {
-          is_stopped = true;
+          //do_write();
         } else {
-          do_write();
+          //socket_.close();
         }
+        do_read();
       }
     );
   }
@@ -123,8 +146,6 @@ private:
   std::string url_;
   std::string response_;
   std::vector<boost::asio::const_buffer> buffers_;
-
-  bool is_stopped;
 };
 
 class server {
@@ -143,16 +164,19 @@ public:
       {
         // Check whether the server was stopped by a signal before this
         // completion handler had a chance to run.
-        if (!acceptor_.is_open())
-        {
-          return;
-        }
-
-        if (!ec)
-        {
+        if (acceptor_.is_open() && !ec) {
+          size_t i = 0, j = 0;
+          for (; i != connections.size(); ++i) {
+            std::cout << i << " " << connections[i]->is_open() << "\n";
+            if (connections[i]->is_open()) {
+              connections[j++] = connections[i];
+            } else {
+              delete connections[i];
+            }
+          }
+          connections.resize(j);
           connections.push_back(new connection(io_, std::move(socket_)));
         }
-
         do_accept();
       }
     );
