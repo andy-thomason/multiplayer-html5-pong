@@ -2,11 +2,38 @@
   <head>
     <title>Test web page</title>
     <script>
-      console.log("hello");
+      function display(ctx, response) {
+        f = new Float32Array(response);
+        imax = f.byteLength/4;
+        for (i = 0; i < imax; i += 4) {
+          ctx.fillStyle = "#FF0000";
+          ctx.fillRect(f[i + 0], f[i + 1], f[i + 2], f[i + 3]);
+        }
+      }
 
+      function run(e) {
+        canvas = document.getElementById("canvas");
+        console.log("canvas=" + canvas);
+
+        var ctx = canvas.getContext("2d");
+
+        var xhttp = new XMLHttpRequest();
+        xhttp.responseType = "arraybuffer";
+        xhttp.onreadystatechange = function () {
+          if (xhttp.readyState == 4 && xhttp.status == 200) {
+            //console.log(xhttp.responseType + ", " + xhttp.response);
+            if (xhttp.response) display(ctx, xhttp.response);
+            xhttp.open("GET", "/data", true);
+            xhttp.send();
+          }
+        }
+        xhttp.open("GET", "/data", true);
+        xhttp.send();
+      }
     </script>
   </head>
-  <body>
-    
+  <body onload="run()">
+    <h1>My first web pong</h1>
+    <canvas id="canvas" width="1024" height="768"/>
   </body>
 </html>
