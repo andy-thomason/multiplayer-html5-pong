@@ -18,6 +18,14 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\main.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\connection.hpp" />
+    <ClInclude Include="src\game.hpp" />
+    <ClInclude Include="src\server.hpp" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{BD516CD4-2362-4EF7-A27E-828844E767AA}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
@@ -149,14 +157,6 @@
       <AdditionalLibraryDirectories>C:\local\boost_1_59_0\lib64-msvc-14.0</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
-  <ItemGroup>
-    <ClCompile Include="main.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="connection.hpp" />
-    <ClInclude Include="game.hpp" />
-    <ClInclude Include="server.hpp" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
