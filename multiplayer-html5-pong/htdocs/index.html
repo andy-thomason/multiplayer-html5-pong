@@ -2,13 +2,37 @@
   <head>
     <title>Test web page</title>
     <script>
+      input_state = {}
+
       function display(ctx, response) {
-        f = new Float32Array(response);
-        imax = f.byteLength/4;
-        for (i = 0; i < imax; i += 4) {
-          ctx.fillStyle = "#FF0000";
-          ctx.fillRect(f[i + 0], f[i + 1], f[i + 2], f[i + 3]);
+        var fd = new Float32Array(response);
+        var id = new Int32Array(response);
+        var imax = response.byteLength / 4;
+
+        ctx.clearRect(0, 0, 1024, 768);
+        for (i = 0; i < imax; i += 5) {
+          ctx.fillStyle = id[i + 4] ? "#FF0000" : "#0000FF";
+          ctx.fillRect(fd[i + 0], fd[i + 1], fd[i + 2], fd[i + 3]);
         }
+      }
+
+      function do_get(request) {
+        var str = JSON.stringify(input_state);
+        //request.setRequestHeader("Content-length", str.length);
+        request.open("PUT", "/data", true);
+        request.send(str);
+      }
+
+      function keydown(event) {
+        var key = event.keyCode || event.which;
+        input_state[key] = true;
+        console.log(input_state);
+      }
+
+      function keyup(event) {
+        var key = event.keyCode || event.which;
+        delete input_state[key];
+        console.log(input_state);
       }
 
       function run(e) {
@@ -17,22 +41,19 @@
 
         var ctx = canvas.getContext("2d");
 
-        var xhttp = new XMLHttpRequest();
-        xhttp.responseType = "arraybuffer";
-        xhttp.onreadystatechange = function () {
-          if (xhttp.readyState == 4 && xhttp.status == 200) {
-            //console.log(xhttp.responseType + ", " + xhttp.response);
-            if (xhttp.response) display(ctx, xhttp.response);
-            xhttp.open("GET", "/data", true);
-            xhttp.send();
+        var request = new XMLHttpRequest();
+        request.responseType = "arraybuffer";
+        request.onreadystatechange = function () {
+          if (request.readyState == 4 && request.status == 200) {
+            if (request.response) display(ctx, request.response);
+            do_get(request);
           }
         }
-        xhttp.open("GET", "/data", true);
-        xhttp.send();
+        do_get(request);
       }
     </script>
   </head>
-  <body onload="run()">
+  <body onload="run()" onkeydown="keydown(event)" onkeyup="keyup(event)">
     <h1>My first web pong</h1>
     <canvas id="canvas" width="1024" height="768"/>
   </body>

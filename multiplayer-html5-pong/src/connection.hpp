@@ -1,3 +1,5 @@
+#include <cctype>
+
 namespace game_server {
 
   using boost::asio::io_service;
@@ -5,6 +7,7 @@ namespace game_server {
 
   class connection {
   public:
+    /// create a new connection from an accepted socket.
     connection(io_service &io, socket &sock, game *_game) :
       io_(io),
       socket_(std::move(sock)),
@@ -15,62 +18,67 @@ namespace game_server {
       do_tick();
     }
 
+    /// return true if the socket is still open.
     bool is_open() {
       return socket_.is_open();
     }
   private:
     // parse all or part of an html request header
-    // return false if it fails.
-    bool parse_header() {
-      bool seen_end = false;
-      bool seen_get = false;
+    // return false if we are still reading (unlikely).
+    bool parse_http() {
       auto p = header_.begin();
       auto e = header_.end();
+      size_t length = 0;
+      url_.clear();
+
+      if (logging) std::cout << header_ << "\n";
+
+      // scan lines of the header
       for (; p != e; ) {
         auto b = p;
         while (p != e && *p != '\n') ++p;
         if (p != e) ++p;
-        if (is(b, e, "\r\n")) {
-          seen_end = true;
-          break;
-        } else if (is(b, p, "GET ")) {
+
+        if (is(b, e, "\r\n") && p + length >= e) {
+          // blank line: end of header
+          data_.assign(p, p + length);
+          header_.assign(p + length, e);
+          return true;
+        } else if (is(b, p, "Content-Length: ")) {
+          b += 16;
+          length = 0;
+          while (b != p && std::isdigit(*b)) length = length * 10 + *b++ - '0';
+        } else if (is(b, p, "PUT ") || is(b, p, "GET ")) {
+          // PUT /url HTTP/1.1
           b += 4;
           url_.clear();
           while (b != p && *b != ' ') url_.push_back(*b++);
-          if (is(b, p, " HTTP/1.1\r\n")) {
-            seen_get = true;
-          }
         }
       }
-      if (seen_end) {
-        if (logging) std::cout << std::string(header_.begin(), p);
-        header_.assign(p, e);
-        return true;
-      }
+      if (logging) std::cout << "not well formed\n";
       return false;
     }
 
     // initiate and handle a read request.
     // the lambda will live on after do_read has returned.
     void do_read() {
-      if (logging) std::cout << "do_read " << socket_.native_handle() << "\n";
+      if (!socket_.is_open()) return;
+
+      //if (logging) std::cout << "do_read " << socket_.native_handle() << "\n";
       socket_.async_read_some(boost::asio::buffer(buffer_),
         [this](boost::system::error_code ec, std::size_t bytes_transferred) {
           if (logging) std::cout << "read " << socket_.native_handle() << " err=" << ec << "\n";
           if (!ec) {
             if (logging) std::cout << socket_.native_handle() << " read " << bytes_transferred << "\n";
             header_.append(buffer_.data(), buffer_.data() + bytes_transferred);
-            if (parse_header()) {
+            if (parse_http()) {
               if (!send_response()) {
                 send_http("HTTP/1.1 404 Not Found\r\n", "text/html", "<html><body>Not found</body></html>");
               }
               do_write();
             }
           } else {
-            if (socket_.is_open()) {
-              std::cout << "close err=" << ec << " " << socket_.native_handle() << "\n";
-              socket_.close();
-            }
+            socket_.close();
           }
         }
       );
@@ -107,11 +115,9 @@ namespace game_server {
       response_.append(code);
       response_.append("Content-Length: ");
       response_.append(std::to_string(str.size()));
-      response_.append("\r\n");
-      response_.append("Content-Type: ");
+      response_.append("\r\nContent-Type: ");
       response_.append(mime);
-      response_.append("\r\n");
-      response_.append("\r\n");
+      response_.append("\r\n\r\n");
       response_.append(str);
       buffers_.clear();
       buffers_.emplace_back(boost::asio::buffer(response_));
@@ -121,10 +127,10 @@ namespace game_server {
       if (logging) std::cout << "url=" << url_ << "\n";
 
       if (url_ == "/data") {
-        if (logging) std::cout << "back!\n";
+        if (logging) std::cout << "tick\n";
 
         // run a frame of the game and write
-        game_->do_frame();
+        game_->do_frame(data_);
 
         data_.clear();
         game_->write(data_);
@@ -167,24 +173,29 @@ namespace game_server {
     /// The io_service used to perform asynchronous operations.
     boost::asio::io_service &io_;
 
-    std::array<char, 2048> buffer_;
-
-    int frame = 0;
-
-    bool logging = false;
-
+    /// client socket from accept()
     socket socket_;
+
+    /// timer used to initiate reads
     boost::asio::deadline_timer timer_;
 
+    /// general buffer for reading etc.
+    std::array<char, 2048> buffer_;
+
+    /// set this to debug network problems
+    bool logging = false;
+
+    /// general strings used for responses
     std::string header_;
     std::string url_;
     std::string response_;
     std::string data_;
+
+    /// buffers to wrap the strings.
     std::vector<boost::asio::const_buffer> buffers_;
 
+    /// the game we are playing on this connection.
     game *game_;
   };
-
-
 }
 
