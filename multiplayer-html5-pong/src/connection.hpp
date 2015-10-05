@@ -77,7 +77,7 @@ namespace game_server {
               }
               do_write();
             }
-          } else {
+          } else if (socket_.is_open()) {
             socket_.close();
           }
         }
@@ -102,8 +102,10 @@ namespace game_server {
       timer_.expires_from_now(boost::posix_time::milliseconds(33));
       timer_.async_wait(
         [this](const boost::system::error_code &ec) {
-          do_read();
-          do_tick();
+          if (!ec) {
+            do_read();
+            do_tick();
+          }
         }
       );
     }

@@ -28,8 +28,7 @@ namespace game_server {
               if (connections[i]->is_open()) {
                 connections[j++] = connections[i];
               } else {
-                // todo: fix this bug where asio dies when we delete.
-                //delete connections[i];
+                delete connections[i];
               }
             }
             connections.resize(j);
